@@ -1,0 +1,47 @@
+name: Build and Release Yaci CLI Zip
+
+on:
+  push:
+    tags:
+      - 'rel-dev-*'
+
+jobs:
+  build-default:
+    strategy:
+      matrix:
+        os: ["ubuntu-20.04", "macos-14"]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      FORCE_COLOR: 1
+    steps:
+      - uses: earthly/actions-setup@v1
+        with:
+          version: v0.8.0
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: '21.0.4'
+          native-image-job-reports: 'true'
+      - name: Set OS Prefix
+        if: runner.os == 'Linux'
+        run: |
+          echo "os_prefix=linux" >> $GITHUB_ENV
+      - name: MacOS specific env
+        if: runner.os == 'macOS'
+        run: |
+          echo "os_prefix=macos" >> $GITHUB_ENV
+      - name: Get Version from gradle.properties
+        run: |
+          VERSION=$(cat gradle.properties | grep version | cut -d'=' -f2 | tr -d '[:space:]')
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+      - name: Run build
+        run: earthly +build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaci-cli-${{ env.TAG }}-${{ env.os_prefix }}-${{ runner.arch }}
+          path: ./output/yaci-store-${{ env.VERSION }}-${{ env.os_prefix }}_${{ runner.arch }}.zip
